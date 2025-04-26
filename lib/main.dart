@@ -26,6 +26,50 @@ class _GomokuBoardState extends State<GomokuBoard> {
   );
   String currentPlayer = 'X';
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showFirstMoveDialog();
+    });
+  }
+
+  void showFirstMoveDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // 무조건 선택하게
+      builder:
+          (_) => AlertDialog(
+            title: Text('선공 / 후공 선택'),
+            content: Text('X (선공) 또는 O (후공)을 선택하세요.'),
+            actions: [
+              TextButton(
+                child: Text('X (선공)'),
+                onPressed: () {
+                  setState(() {
+                    currentPlayer = 'X';
+                  });
+                  Navigator.pop(context);
+                },
+              ),
+              TextButton(
+                child: Text('O (후공)'),
+                onPressed: () {
+                  setState(() {
+                    currentPlayer = 'X'; // 기본은 X로 시작
+                  });
+                  Navigator.pop(context);
+                  Future.delayed(
+                    Duration(milliseconds: 500),
+                    aiMove,
+                  ); // 후공이면 AI가 먼저 둠
+                },
+              ),
+            ],
+          ),
+    );
+  }
+
   void handleTap(int x, int y) {
     if (board[x][y] != '' || currentPlayer != 'X') return;
 
