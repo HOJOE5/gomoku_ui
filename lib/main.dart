@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 void main() => runApp(GomokuApp());
 
 class GomokuApp extends StatelessWidget {
+  const GomokuApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(home: GomokuBoard());
@@ -10,6 +12,8 @@ class GomokuApp extends StatelessWidget {
 }
 
 class GomokuBoard extends StatefulWidget {
+  const GomokuBoard({super.key});
+
   @override
   _GomokuBoardState createState() => _GomokuBoardState();
 }
@@ -23,11 +27,16 @@ class _GomokuBoardState extends State<GomokuBoard> {
   String currentPlayer = 'X';
 
   void handleTap(int x, int y) {
-    if (board[x][y] != '') return;
+    if (board[x][y] != '' || currentPlayer != 'X') return;
+
+    print('📌 사람이 $x, $y 클릭');
+
+    bool hasWinner = false;
 
     setState(() {
       board[x][y] = currentPlayer;
       if (checkWin(x, y, currentPlayer)) {
+        hasWinner = true;
         showDialog(
           context: context,
           builder:
@@ -45,7 +54,57 @@ class _GomokuBoardState extends State<GomokuBoard> {
               ),
         );
       } else {
-        currentPlayer = currentPlayer == 'X' ? 'O' : 'X';
+        currentPlayer = 'O';
+      }
+    });
+
+    if (!hasWinner) {
+      print('🕑 AI 호출 대기...');
+      Future.delayed(Duration(milliseconds: 500), () {
+        aiMove();
+      });
+    }
+  }
+
+  void aiMove() {
+    print('🧠 AI 작동 시작!');
+
+    List<List<int>> emptyCells = [];
+
+    for (int i = 0; i < boardSize; i++) {
+      for (int j = 0; j < boardSize; j++) {
+        if (board[i][j] == '') {
+          emptyCells.add([i, j]);
+        }
+      }
+    }
+
+    if (emptyCells.isEmpty) return;
+
+    emptyCells.shuffle();
+    var move = emptyCells.first;
+
+    setState(() {
+      board[move[0]][move[1]] = 'O';
+      if (checkWin(move[0], move[1], 'O')) {
+        showDialog(
+          context: context,
+          builder:
+              (_) => AlertDialog(
+                title: Text('🎉 O 승리!'),
+                actions: [
+                  TextButton(
+                    child: Text('다시 시작'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      resetBoard();
+                    },
+                  ),
+                ],
+              ),
+        );
+      } else {
+        currentPlayer = 'X';
       }
     });
   }
@@ -122,3 +181,4 @@ class _GomokuBoardState extends State<GomokuBoard> {
     );
   }
 }
+//이래도 되나 싶을정도로 쓰자
