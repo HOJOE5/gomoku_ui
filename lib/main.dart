@@ -55,86 +55,127 @@ class _GomokuBoardState extends State<GomokuBoard> {
     });
   }
 
-  void aiMove() {
-    bool moved = false;
+  // 모든 판을 점수 1차 수정정
+  int evaluateMove(int x, int y) {
+    if (board[x][y] != '') return -1; // 이미 놓인 칸 무효
 
-    // 1순위: 내가 이길 수 있는 자리 찾기
+    int totalScore = 0;
+
+    const directions = [
+      [0, 1],
+      [1, 0],
+      [1, 1],
+      [1, -1],
+    ];
+
+    for (var dir in directions) {
+      totalScore += evaluateDirection(x, y, dir[0], dir[1], 'O'); // 내 돌 평가
+      totalScore += evaluateDirection(x, y, dir[0], dir[1], 'X'); // 상대 돌 평가
+    }
+
+    return totalScore;
+  }
+
+  int evaluateDirection(int x, int y, int dx, int dy, String player) {
+    int count = 0;
+    int openEnds = 0;
+
+    // ➡️ 한쪽 방향 체크
+    int nx = x + dx;
+    int ny = y + dy;
+    while (nx >= 0 && ny >= 0 && nx < boardSize && ny < boardSize) {
+      if (board[nx][ny] == player) {
+        count++;
+        nx += dx;
+        ny += dy;
+      } else if (board[nx][ny] == '') {
+        openEnds++;
+        break;
+      } else {
+        break;
+      }
+    }
+
+    // ⬅️ 반대 방향 체크
+    nx = x - dx;
+    ny = y - dy;
+    while (nx >= 0 && ny >= 0 && nx < boardSize && ny < boardSize) {
+      if (board[nx][ny] == player) {
+        count++;
+        nx -= dx;
+        ny -= dy;
+      } else if (board[nx][ny] == '') {
+        openEnds++;
+        break;
+      } else {
+        break;
+      }
+    }
+
+    // ✨ 점수 부여
+    if (player == 'O') {
+      // 내 돌 평가
+      if (count == 1 && openEnds == 1) return 20;
+      if (count == 1 && openEnds == 2) return 80;
+      if (count == 2 && openEnds == 1) return 300;
+      if (count == 2 && openEnds == 2) return 800;
+      if (count == 3 && openEnds == 1) return 5000;
+      if (count == 3 && openEnds == 2) return 9000;
+    } else if (player == 'X') {
+      // 상대 돌 평가
+      if (count == 1 && openEnds == 1) return 30;
+      if (count == 1 && openEnds == 2) return 120;
+      if (count == 2 && openEnds == 1) return 400;
+      if (count == 2 && openEnds == 2) return 1200;
+      if (count == 3 && openEnds == 1) return 7000;
+      if (count == 3 && openEnds == 2) return 15000;
+    }
+
+    return 0;
+  }
+
+  void aiMove() {
+    int bestScore = -1;
+    int bestX = -1;
+    int bestY = -1;
+
     for (int i = 0; i < boardSize; i++) {
       for (int j = 0; j < boardSize; j++) {
-        if (board[i][j] == '') {
-          board[i][j] = 'O';
-          if (checkWin(i, j, 'O')) {
-            setState(() {
-              board[i][j] = 'O';
-              showDialog(
-                context: context,
-                builder:
-                    (_) => AlertDialog(
-                      title: Text('🎉 O 승리!'),
-                      actions: [
-                        TextButton(
-                          child: Text('다시 시작'),
-                          onPressed: () {
-                            Navigator.pop(context);
-                            resetBoard();
-                          },
-                        ),
-                      ],
+        int score = evaluateMove(i, j);
+        if (score > bestScore) {
+          bestScore = score;
+          bestX = i;
+          bestY = j;
+        }
+      }
+    }
+
+    if (bestX != -1 && bestY != -1) {
+      setState(() {
+        board[bestX][bestY] = 'O';
+        if (checkWin(bestX, bestY, 'O')) {
+          showDialog(
+            context: context,
+            builder:
+                (_) => AlertDialog(
+                  title: Text('🎉 O 승리!'),
+                  actions: [
+                    TextButton(
+                      child: Text('다시 시작'),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        resetBoard();
+                      },
                     ),
-              );
-            });
-            moved = true;
-            return;
-          }
-          board[i][j] = '';
-        }
-      }
-    }
-
-    // 2순위: 상대가 이길 수 있는 자리 막기
-    if (!moved) {
-      for (int i = 0; i < boardSize; i++) {
-        for (int j = 0; j < boardSize; j++) {
-          if (board[i][j] == '' && canEnemyWinIfPlaced(i, j)) {
-            setState(() {
-              board[i][j] = 'O';
-              currentPlayer = 'X';
-            });
-            moved = true;
-            return;
-          }
-        }
-      }
-    }
-
-    // 3순위: 주변에 돌이 있는 곳에 둔다
-    if (!moved) {
-      List<List<int>> candidateMoves = [];
-
-      for (int i = 0; i < boardSize; i++) {
-        for (int j = 0; j < boardSize; j++) {
-          if (board[i][j] == '' && hasNeighbor(i, j)) {
-            candidateMoves.add([i, j]);
-          }
-        }
-      }
-
-      if (candidateMoves.isNotEmpty) {
-        candidateMoves.shuffle();
-        var move = candidateMoves.first;
-
-        setState(() {
-          board[move[0]][move[1]] = 'O';
+                  ],
+                ),
+          );
+        } else {
           currentPlayer = 'X';
-        });
-        moved = true;
-        print('📍 주변 돌 근처에 둠: (${move[0]}, ${move[1]})');
-        return;
-      }
-    }
-
-    if (!moved) {
-      // 더 이상 둘 곳이 없는 경우
+        }
+      });
+    } else {
+      // 만약 둘 곳이 아예 없다면 (예외)
       setState(() {
         currentPlayer = 'X';
       });
