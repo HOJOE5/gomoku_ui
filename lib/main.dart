@@ -24,20 +24,55 @@ class _GomokuBoardState extends State<GomokuBoard> {
     boardSize,
     (_) => List.filled(boardSize, ''),
   );
-  String currentPlayer = 'X';
+  String gameRule = ''; // 'renju' or 'normal'
+  String currentPlayer = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      showFirstMoveDialog();
+      showRuleSelectionDialog();
     });
+  }
+
+  void showRuleSelectionDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (_) => AlertDialog(
+            title: Text('게임 룰 선택'),
+            content: Text('렌주룰(선공만 금수) / 일반룰(모두 금수) 중 선택하세요.'),
+            actions: [
+              TextButton(
+                child: Text('렌주룰'),
+                onPressed: () {
+                  setState(() {
+                    gameRule = 'renju';
+                  });
+                  Navigator.pop(context);
+                  showFirstMoveDialog();
+                },
+              ),
+              TextButton(
+                child: Text('일반룰'),
+                onPressed: () {
+                  setState(() {
+                    gameRule = 'normal';
+                  });
+                  Navigator.pop(context);
+                  showFirstMoveDialog();
+                },
+              ),
+            ],
+          ),
+    );
   }
 
   void showFirstMoveDialog() {
     showDialog(
       context: context,
-      barrierDismissible: false, // 무조건 선택하게
+      barrierDismissible: false,
       builder:
           (_) => AlertDialog(
             title: Text('선공 / 후공 선택'),
@@ -56,13 +91,10 @@ class _GomokuBoardState extends State<GomokuBoard> {
                 child: Text('O (후공)'),
                 onPressed: () {
                   setState(() {
-                    currentPlayer = 'X'; // 기본은 X로 시작
+                    currentPlayer = 'X';
                   });
                   Navigator.pop(context);
-                  Future.delayed(
-                    Duration(milliseconds: 500),
-                    aiMove,
-                  ); // 후공이면 AI가 먼저 둠
+                  Future.delayed(Duration(milliseconds: 500), aiMove);
                 },
               ),
             ],
@@ -73,25 +105,17 @@ class _GomokuBoardState extends State<GomokuBoard> {
   void handleTap(int x, int y) {
     if (board[x][y] != '' || currentPlayer != 'X') return;
 
+    if (isForbiddenMove(x, y)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('금수입니다! 이 자리에 둘 수 없습니다.')));
+      return;
+    }
+
     setState(() {
       board[x][y] = currentPlayer;
       if (checkWin(x, y, currentPlayer)) {
-        showDialog(
-          context: context,
-          builder:
-              (_) => AlertDialog(
-                title: Text('🎉 $currentPlayer 승리!'),
-                actions: [
-                  TextButton(
-                    child: Text('다시 시작'),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      resetBoard();
-                    },
-                  ),
-                ],
-              ),
-        );
+        showBottomWinMessage(currentPlayer);
       } else {
         currentPlayer = 'O';
         Future.delayed(Duration(milliseconds: 500), aiMove);
@@ -99,11 +123,14 @@ class _GomokuBoardState extends State<GomokuBoard> {
     });
   }
 
-  // 모든 판을 점수 1차 수정정
-  int evaluateMove(int x, int y) {
-    if (board[x][y] != '') return -1; // 이미 놓인 칸 무효
+  bool isForbiddenMove(int x, int y) {
+    bool isFirstPlayer = (currentPlayer == 'X');
 
-    int totalScore = 0;
+    board[x][y] = currentPlayer;
+
+    int threeCount = 0;
+    int fourCount = 0;
+    bool overline = false;
 
     const directions = [
       [0, 1],
@@ -113,69 +140,48 @@ class _GomokuBoardState extends State<GomokuBoard> {
     ];
 
     for (var dir in directions) {
-      totalScore += evaluateDirection(x, y, dir[0], dir[1], 'O'); // 내 돌 평가
-      totalScore += evaluateDirection(x, y, dir[0], dir[1], 'X'); // 상대 돌 평가
-    }
-
-    return totalScore;
-  }
-
-  int evaluateDirection(int x, int y, int dx, int dy, String player) {
-    int count = 0;
-    int openEnds = 0;
-
-    // ➡️ 한쪽 방향 체크
-    int nx = x + dx;
-    int ny = y + dy;
-    while (nx >= 0 && ny >= 0 && nx < boardSize && ny < boardSize) {
-      if (board[nx][ny] == player) {
+      int count = 1;
+      int nx = x + dir[0];
+      int ny = y + dir[1];
+      while (nx >= 0 &&
+          ny >= 0 &&
+          nx < boardSize &&
+          ny < boardSize &&
+          board[nx][ny] == currentPlayer) {
         count++;
-        nx += dx;
-        ny += dy;
-      } else if (board[nx][ny] == '') {
-        openEnds++;
-        break;
-      } else {
-        break;
+        nx += dir[0];
+        ny += dir[1];
       }
-    }
-
-    // ⬅️ 반대 방향 체크
-    nx = x - dx;
-    ny = y - dy;
-    while (nx >= 0 && ny >= 0 && nx < boardSize && ny < boardSize) {
-      if (board[nx][ny] == player) {
+      nx = x - dir[0];
+      ny = y - dir[1];
+      while (nx >= 0 &&
+          ny >= 0 &&
+          nx < boardSize &&
+          ny < boardSize &&
+          board[nx][ny] == currentPlayer) {
         count++;
-        nx -= dx;
-        ny -= dy;
-      } else if (board[nx][ny] == '') {
-        openEnds++;
-        break;
-      } else {
-        break;
+        nx -= dir[0];
+        ny -= dir[1];
       }
+
+      if (count > 5) overline = true;
+      if (count == 4) fourCount++;
+      if (count == 3) threeCount++;
     }
 
-    // ✨ 점수 부여
-    if (player == 'O') {
-      // 내 돌 평가
-      if (count == 1 && openEnds == 1) return 20;
-      if (count == 1 && openEnds == 2) return 80;
-      if (count == 2 && openEnds == 1) return 300;
-      if (count == 2 && openEnds == 2) return 800;
-      if (count == 3 && openEnds == 1) return 5000;
-      if (count == 3 && openEnds == 2) return 9000;
-    } else if (player == 'X') {
-      // 상대 돌 평가
-      if (count == 1 && openEnds == 1) return 30;
-      if (count == 1 && openEnds == 2) return 120;
-      if (count == 2 && openEnds == 1) return 400;
-      if (count == 2 && openEnds == 2) return 1200;
-      if (count == 3 && openEnds == 1) return 7000;
-      if (count == 3 && openEnds == 2) return 15000;
+    board[x][y] = '';
+
+    if (overline) {
+      if (gameRule == 'normal') return true;
+      if (gameRule == 'renju') return isFirstPlayer;
     }
 
-    return 0;
+    if ((threeCount >= 2) || (fourCount >= 2)) {
+      if (gameRule == 'normal') return true;
+      if (gameRule == 'renju') return isFirstPlayer;
+    }
+
+    return false;
   }
 
   void aiMove() {
@@ -198,35 +204,23 @@ class _GomokuBoardState extends State<GomokuBoard> {
       setState(() {
         board[bestX][bestY] = 'O';
         if (checkWin(bestX, bestY, 'O')) {
-          showDialog(
-            context: context,
-            builder:
-                (_) => AlertDialog(
-                  title: Text('🎉 O 승리!'),
-                  actions: [
-                    TextButton(
-                      child: Text('다시 시작'),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        resetBoard();
-                      },
-                    ),
-                  ],
-                ),
-          );
+          showBottomWinMessage('O');
         } else {
           currentPlayer = 'X';
         }
       });
     } else {
-      // 만약 둘 곳이 아예 없다면 (예외)
       setState(() {
         currentPlayer = 'X';
       });
     }
   }
 
-  bool canEnemyWinIfPlaced(int x, int y) {
+  int evaluateMove(int x, int y) {
+    if (board[x][y] != '') return -1;
+
+    int totalScore = 0;
+
     const directions = [
       [0, 1],
       [1, 0],
@@ -235,61 +229,64 @@ class _GomokuBoardState extends State<GomokuBoard> {
     ];
 
     for (var dir in directions) {
-      int count = 1;
-
-      int nx = x + dir[0], ny = y + dir[1];
-      while (nx >= 0 &&
-          ny >= 0 &&
-          nx < boardSize &&
-          ny < boardSize &&
-          board[nx][ny] == 'X') {
-        count++;
-        nx += dir[0];
-        ny += dir[1];
-      }
-
-      nx = x - dir[0];
-      ny = y - dir[1];
-      while (nx >= 0 &&
-          ny >= 0 &&
-          nx < boardSize &&
-          ny < boardSize &&
-          board[nx][ny] == 'X') {
-        count++;
-        nx -= dir[0];
-        ny -= dir[1];
-      }
-
-      if (count >= 5) return true;
+      totalScore += evaluateDirection(x, y, dir[0], dir[1], 'O');
+      totalScore += evaluateDirection(x, y, dir[0], dir[1], 'X');
     }
 
-    return false;
+    return totalScore;
   }
 
-  bool hasNeighbor(int x, int y) {
-    const directions = [
-      [0, 1],
-      [1, 0],
-      [1, 1],
-      [1, -1],
-      [0, -1],
-      [-1, 0],
-      [-1, -1],
-      [-1, 1],
-    ];
+  int evaluateDirection(int x, int y, int dx, int dy, String player) {
+    int count = 0;
+    int openEnds = 0;
 
-    for (var dir in directions) {
-      int nx = x + dir[0];
-      int ny = y + dir[1];
-
-      if (nx >= 0 && ny >= 0 && nx < boardSize && ny < boardSize) {
-        if (board[nx][ny] != '') {
-          return true;
-        }
+    int nx = x + dx;
+    int ny = y + dy;
+    while (nx >= 0 && ny >= 0 && nx < boardSize && ny < boardSize) {
+      if (board[nx][ny] == player) {
+        count++;
+        nx += dx;
+        ny += dy;
+      } else if (board[nx][ny] == '') {
+        openEnds++;
+        break;
+      } else {
+        break;
       }
     }
 
-    return false;
+    nx = x - dx;
+    ny = y - dy;
+    while (nx >= 0 && ny >= 0 && nx < boardSize && ny < boardSize) {
+      if (board[nx][ny] == player) {
+        count++;
+        nx -= dx;
+        ny -= dy;
+      } else if (board[nx][ny] == '') {
+        openEnds++;
+        break;
+      } else {
+        break;
+      }
+    }
+
+    if (player == 'O') {
+      if (count == 1 && openEnds == 1) return 20;
+      if (count == 1 && openEnds == 2) return 80;
+      if (count == 2 && openEnds == 1) return 300;
+      if (count == 2 && openEnds == 2) return 800;
+      if (count == 3 && openEnds == 1) return 5000;
+      if (count == 3 && openEnds == 2) return 9000;
+    } else if (player == 'X') {
+      if (count == 1 && openEnds == 1) return 30;
+      if (count == 1 && openEnds == 2) return 120;
+      if (count == 2 && openEnds == 1) return 400;
+      if (count == 2 && openEnds == 2) return 1200;
+      if (count == 3 && openEnds == 1) return 7000;
+      if (count == 3 && openEnds == 2) return 15000;
+    }
+
+    return 0;
   }
 
   bool checkWin(int x, int y, String player) {
@@ -322,6 +319,55 @@ class _GomokuBoardState extends State<GomokuBoard> {
     }
 
     return false;
+  }
+
+  void showBottomWinMessage(String winner) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '',
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return SafeArea(
+          child: Stack(
+            children: [
+              Positioned(
+                bottom: 30,
+                left: 20,
+                right: 20,
+                child: Material(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white,
+                  elevation: 8,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '🎉 $winner 승리!',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            resetBoard();
+                          },
+                          child: Text('다시 시작'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void resetBoard() {
