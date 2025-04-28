@@ -42,7 +42,7 @@ class _GomokuBoardState extends State<GomokuBoard> {
       builder:
           (_) => AlertDialog(
             title: Text('게임 룰 선택'),
-            content: Text('렌주룰(선공만 금수) / 일반룰(모두 금수) 중 선택하세요.'),
+            content: Text('렌주룰(선공만 금수) / 일반룰(모두 금수) 중 \n 선택하세요.'),
             actions: [
               TextButton(
                 child: Text('렌주룰'),
